@@ -1,0 +1,657 @@
+-- Combined embedded script (Version B)
+-- Single LocalScript: Main menu + embedded Pet Randomizer + embedded Pet Mutation Reroll
+
+-- Services
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- -----------------------
+-- Helper: make draggable
+-- -----------------------
+local function makeDraggable(frame, handle)
+    handle = handle or frame
+    local dragging = false
+    local dragInput, dragStart, startPos
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+-- -----------------------
+-- Main menu GUI
+-- -----------------------
+local mainGui = Instance.new("ScreenGui")
+mainGui.Name = "ZuriHubMainMenu"
+mainGui.ResetOnSpawn = false
+mainGui.Parent = playerGui
+
+local container = Instance.new("Frame")
+container.Size = UDim2.new(0, 320, 0, 150)
+container.Position = UDim2.new(0.5, -160, 0.35, -75)
+container.BackgroundColor3 = Color3.fromRGB(35, 0, 55)
+container.BorderSizePixel = 0
+container.Active = true
+container.Parent = mainGui
+Instance.new("UICorner", container).CornerRadius = UDim.new(0, 10)
+local stroke = Instance.new("UIStroke", container)
+stroke.Color = Color3.fromRGB(140, 60, 200)
+stroke.Thickness = 2
+
+local header = Instance.new("Frame", container)
+header.Size = UDim2.new(1, 0, 0, 36)
+header.Position = UDim2.new(0, 0, 0, 0)
+header.BackgroundColor3 = Color3.fromRGB(110, 40, 190)
+Instance.new("UICorner", header).CornerRadius = UDim.new(0, 10)
+
+local title = Instance.new("TextLabel", header)
+title.Size = UDim2.new(1, -60, 1, 0)
+title.Position = UDim2.new(0, 10, 0, 0)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.Text = "Zuri Hub"
+title.TextSize = 18
+title.TextColor3 = Color3.fromRGB(245, 245, 255)
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+local closeMain = Instance.new("TextButton", header)
+closeMain.Size = UDim2.new(0, 30, 0, 24)
+closeMain.Position = UDim2.new(1, -40, 0, 6)
+closeMain.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
+closeMain.Text = "X"
+closeMain.Font = Enum.Font.GothamBold
+closeMain.TextSize = 16
+closeMain.TextColor3 = Color3.fromRGB(255,255,255)
+Instance.new("UICorner", closeMain).CornerRadius = UDim.new(0,6)
+
+closeMain.MouseButton1Click:Connect(function()
+    mainGui:Destroy()
+end)
+
+local btnReroll = Instance.new("TextButton", container)
+btnReroll.Size = UDim2.new(1, -40, 0, 44)
+btnReroll.Position = UDim2.new(0, 20, 0, 50)
+btnReroll.BackgroundColor3 = Color3.fromRGB(130, 0, 180)
+btnReroll.Font = Enum.Font.GothamBold
+btnReroll.Text = "Open Mutation Reroll"
+btnReroll.TextSize = 16
+btnReroll.TextColor3 = Color3.fromRGB(255,255,255)
+Instance.new("UICorner", btnReroll).CornerRadius = UDim.new(0, 8)
+local btnRandom = Instance.new("TextButton", container)
+btnRandom.Size = UDim2.new(1, -40, 0, 44)
+btnRandom.Position = UDim2.new(0, 20, 0, 102)
+btnRandom.BackgroundColor3 = Color3.fromRGB(90, 0, 140)
+btnRandom.Font = Enum.Font.GothamBold
+btnRandom.Text = "Open Pet Randomizer"
+btnRandom.TextSize = 16
+btnRandom.TextColor3 = Color3.fromRGB(255,255,255)
+Instance.new("UICorner", btnRandom).CornerRadius = UDim.new(0, 8)
+
+makeDraggable(container, header)
+
+-- -----------------------
+-- Embedded Pet Mutation Reroll (function to create + cleanup)
+-- -----------------------
+local function openMutationReroll()
+    -- If already open, destroy first to avoid duplicates
+    if playerGui:FindFirstChild("PetMutationReroll_UI") then
+        playerGui.PetMutationReroll_UI:Destroy()
+    end
+
+    -- Localize data for this tool
+    local machineName = "PetMutationMachine"
+    local commonMutations = { "Shiny", "Inverted", "Frozen", "Windy", "Tiny", "Ironskin" }
+    local rareMutations = { "Mega", "Golden", "Rainbow", "Radiant", "Ascended", "Shocked" }
+
+    local rolling = false
+    local espEnabled = true
+    local currentMutation = "No Mutation"
+
+    -- Find machine
+    local machine = workspace:FindFirstChild(machineName, true)
+    if not machine then
+        warn("Mutation machine not found:", machineName)
+        -- still create UI to show warning
+    end
+
+    local attachPart = machine and (machine.PrimaryPart or machine:FindFirstChildWhichIsA("BasePart", true)) or nil
+
+    -- Create Billboard for machine (if found)
+    local billboard, mutationLabel
+    if attachPart then
+        billboard = Instance.new("BillboardGui")
+        billboard.Name = "Zuri_MutationBillboard"
+        billboard.Size = UDim2.new(0, 260, 0, 50)
+        billboard.StudsOffset = Vector3.new(0, 4, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Parent = attachPart
+
+        mutationLabel = Instance.new("TextLabel")
+        mutationLabel.Size = UDim2.new(1, 0, 1, 0)
+        mutationLabel.BackgroundTransparency = 1
+        mutationLabel.Font = Enum.Font.GothamBold
+        mutationLabel.TextSize = 20
+        mutationLabel.TextColor3 = Color3.fromRGB(170, 85, 255)
+        mutationLabel.TextStrokeTransparency = 0
+        mutationLabel.Text = currentMutation
+        mutationLabel.Parent = billboard
+    end
+
+    -- weighted helper
+    local function getWeightedMutation()
+        local roll = math.random(1, 1000)
+        if roll <= 20 then
+            return rareMutations[math.random(#rareMutations)]
+        else
+            return commonMutations[math.random(#commonMutations)]
+        end
+    end
+
+    local function updateMutation(name, color)
+        currentMutation = name
+        if mutationLabel then
+            mutationLabel.Text = name
+            mutationLabel.TextColor3 = color
+        end
+    end
+
+    updateMutation(getWeightedMutation(), Color3.fromRGB(170,85,255))
+
+    -- Build UI
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "PetMutationReroll_UI"
+    gui.Parent = playerGui
+
+    local frame = Instance.new("Frame", gui)
+    frame.Size = UDim2.new(0, 320, 0, 170)
+    frame.Position = UDim2.new(0.5, -160, 0.45, -85)
+    frame.BackgroundColor3 = Color3.fromRGB(60, 0, 80)
+    frame.BorderSizePixel = 0
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0,10)
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Color = Color3.fromRGB(140, 60, 200)
+    stroke.Thickness = 2
+
+    local header = Instance.new("Frame", frame)
+    header.Size = UDim2.new(1,0,0,34)
+    header.Position = UDim2.new(0,0,0,0)
+    header.BackgroundTransparency = 1
+
+    local title = Instance.new("TextLabel", header)
+    title.Size = UDim2.new(1, -40, 1, 0)
+    title.Position = UDim2.new(0, 10, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBold
+    title.Text = "Pet Mutation Reroll"
+    title.TextSize = 18
+    title.TextColor3 = Color3.fromRGB(255,255,255)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+
+    local exitBtn = Instance.new("TextButton", header)
+    exitBtn.Size = UDim2.new(0, 30, 0, 24)
+    exitBtn.Position = UDim2.new(1, -36, 0, 5)
+    exitBtn.BackgroundColor3 = Color3.fromRGB(180,40,40)
+    exitBtn.Font = Enum.Font.GothamBold
+    exitBtn.Text = "X"
+    exitBtn.TextSize = 16
+    exitBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    Instance.new("UICorner", exitBtn).CornerRadius = UDim.new(0,6)
+
+    -- Reroll & toggle buttons
+    local rerollBtn = Instance.new("TextButton", frame)
+    rerollBtn.Size = UDim2.new(1, -40, 0, 46)
+    rerollBtn.Position = UDim2.new(0, 20, 0, 50)
+    rerollBtn.BackgroundColor3 = Color3.fromRGB(140, 50, 200)
+    rerollBtn.Font = Enum.Font.GothamBold
+    rerollBtn.Text = "Reroll Mutation"
+    rerollBtn.TextSize = 18
+    rerollBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    Instance.new("UICorner", rerollBtn).CornerRadius = UDim.new(0,8)
+
+    local toggleBtn = Instance.new("TextButton", frame)
+    toggleBtn.Size = UDim2.new(1, -40, 0, 38)
+    toggleBtn.Position = UDim2.new(0, 20, 0, 104)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(95, 30, 150)
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.Text = "Toggle Mutation ESP: ON"
+    toggleBtn.TextSize = 16
+    toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0,8)
+
+    local footer = Instance.new("TextLabel", frame)
+    footer.Size = UDim2.new(1, 0, 0, 20)
+    footer.Position = UDim2.new(0,0,1,-22)
+    footer.BackgroundTransparency = 1
+    footer.Font = Enum.Font.Gotham
+    footer.TextSize = 14
+    footer.Text = "YT: ZuriScript | Made By ZuriHub"
+    footer.TextColor3 = Color3.fromRGB(200,160,235)
+    footer.TextXAlignment = Enum.TextXAlignment.Center
+
+    makeDraggable(frame, header)
+
+    -- Cleanup function
+    local cleanupConnections = {}
+    local function cleanup()
+        -- destroy gui
+        if gui and gui.Parent then
+            gui:Destroy()
+        end
+        -- hide billboard
+        if billboard then
+            billboard:Destroy()
+        end
+        -- disconnect connections
+        for _, c in ipairs(cleanupConnections) do
+            if c and typeof(c) == "RBXScriptConnection" then
+                c:Disconnect()
+            end
+        end
+    end
+
+    -- Exit behavior: slide down then cleanup
+    exitBtn.MouseButton1Click:Connect(function()
+        rerollBtn.Active = false
+        toggleBtn.Active = false
+        exitBtn.Active = false
+        local tween = TweenService:Create(frame, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.new(frame.Position.X.Scale, frame.Position.X.Offset, 1, 60)
+        })
+        tween:Play()
+        tween.Completed:Wait()
+        cleanup()
+    end)
+
+    -- Build mutation list for rolling animation
+    local allMutationsList = {}
+    for _, m in ipairs(commonMutations) do table.insert(allMutationsList, m) end
+    for _, m in ipairs(rareMutations) do table.insert(allMutationsList, m) end
+
+    rerollBtn.MouseButton1Click:Connect(function()
+        if rolling then return end
+        rolling = true
+        rerollBtn.Text = "Rerolling..."
+        local totalTime = 5
+        local elapsed = 0
+        local waitTime = 0.05
+
+        while elapsed < totalTime do
+            local pick = allMutationsList[math.random(#allMutationsList)]
+            updateMutation(pick, Color3.fromRGB(255,255,0)) -- yellow while rolling
+            task.wait(waitTime)
+            elapsed = elapsed + waitTime
+            waitTime = waitTime + 0.02
+        end
+
+        local final = getWeightedMutation()
+        updateMutation(final, Color3.fromRGB(170,85,255)) -- purple final
+        rerollBtn.Text = "Reroll Mutation"
+        rolling = false
+    end)
+
+    toggleBtn.MouseButton1Click:Connect(function()
+        espEnabled = not espEnabled
+        toggleBtn.Text = "Toggle Mutation ESP: " .. (espEnabled and "ON" or "OFF")
+        if billboard then
+            billboard.Enabled = espEnabled
+        end
+    end)
+end
+
+-- -----------------------
+-- Embedded Pet Randomizer (function)
+-- -----------------------
+local function openPetRandomizer()
+    -- If already open, destroy first
+    if playerGui:FindFirstChild("PetRandomizer_UI") then
+        playerGui.PetRandomizer_UI:Destroy()
+    end
+
+    -- local state for this tool
+    local petTable = {
+        ["Common Egg"] = { "Dog", "Bunny", "Golden Lab" },
+        ["Uncommon Egg"] = { "Chicken", "Black Bunny", "Cat", "Deer" },
+        ["Rare Egg"] = { "Pig", "Monkey", "Rooster", "Orange Tabby", "Spotted Deer" },
+        ["Legendary Egg"] = { "Cow", "Polar Bear", "Sea Otter", "Turtle", "Silver Monkey" },
+        ["Mythical Egg"] = { "Grey Mouse", "Brown Mouse", "Squirrel", "Red Giant Ant" },
+        ["Bug Egg"] = { "Snail", "Caterpillar", "Giant Ant", "Praying Mantis" },
+        ["Night Egg"] = { "Frog", "Hedgehog", "Mole", "Echo Frog", "Night Owl" },
+        ["Bee Egg"] = { "Bee", "Honey Bee", "Bear Bee", "Petal Bee" },
+        ["Anti Bee Egg"] = { "Wasp", "Moth", "Tarantula Hawk" },
+        ["Oasis Egg"] = { "Meerkat", "Sand Snake", "Axolotl" },
+        ["Paradise Egg"] = { "Ostrich", "Peacock", "Capybara" },
+        ["Dinosaur Egg"] = { "Raptor", "Triceratops", "Stegosaurus" },
+        ["Primal Egg"] = { "Parasaurolophus", "Iguanodon", "Pachycephalosaurus" },
+        ["Zen Egg"] = { "Shiba Inu", "Nihonzaru", "Tanuki" }
+    }
+
+    local espEnabled_local = true
+    local truePetMap = {}
+    local autoRunning = false
+    local autoConn = nil
+
+    -- local helper: glitch label effect
+    local function glitchLabelEffect(label)
+        coroutine.wrap(function()
+            local original = label.TextColor3
+            for i = 1, 2 do
+                label.TextColor3 = Color3.new(1, 0, 0)
+                task.wait(0.07)
+                label.TextColor3 = original
+                task.wait(0.07)
+            end
+        end)()
+    end
+
+    local function applyEggESP(eggModel, petName)
+        if not eggModel or not eggModel.Parent then return end
+        -- remove existing
+        local existing = eggModel:FindFirstChild("PetBillboard", true)
+        if existing then existing:Destroy() end
+        local existingHighlight = eggModel:FindFirstChild("ESPHighlight", true)
+        if existingHighlight then existingHighlight:Destroy() end
+        if not espEnabled_local then return end
+
+        local basePart = eggModel:FindFirstChildWhichIsA("BasePart", true)
+        if not basePart then return end
+
+        local hatchReady = true
+        local hatchTime = eggModel:FindFirstChild("HatchTime")
+        local readyFlag = eggModel:FindFirstChild("ReadyToHatch")
+        if hatchTime and hatchTime:IsA("NumberValue") and hatchTime.Value > 0 then
+            hatchReady = false
+        elseif readyFlag and readyFlag:IsA("BoolValue") and not readyFlag.Value then
+            hatchReady = false
+        end
+
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "PetBillboard"
+        billboard.Size = UDim2.new(0, 270, 0, 50)
+        billboard.StudsOffset = Vector3.new(0, 4.5, 0)
+        billboard.AlwaysOnTop = true
+        billboard.MaxDistance = 500
+        billboard.Parent = basePart
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, 0, 1, 0)
+        label.BackgroundTransparency = 1
+        label.Text = eggModel.Name .. " | " .. tostring(petName or "Unknown")
+        label.TextColor3 = hatchReady and Color3.new(1,1,1) or Color3.fromRGB(160,160,160)
+        label.TextStrokeTransparency = hatchReady and 0 or 0.5
+        if not hatchReady then
+            label.Text = eggModel.Name .. " | " .. tostring(petName or "Unknown") .. " (Not Ready)"
+        end
+        label.TextScaled = true
+        label.Font = Enum.Font.FredokaOne
+        label.Parent = billboard
+
+        glitchLabelEffect(label)
+
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "ESPHighlight"
+        highlight.FillColor = Color3.fromRGB(255,200,0)
+        highlight.OutlineColor = Color3.fromRGB(255,255,255)
+        highlight.FillTransparency = 0.7
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Adornee = basePart
+        highlight.Parent = basePart
+    end
+
+    local function removeEggESP(eggModel)
+        if not eggModel or not eggModel.Parent then return end
+        local label = eggModel:FindFirstChild("PetBillboard", true)
+        if label then label:Destroy() end
+        local highlight = eggModel:FindFirstChild("ESPHighlight", true)
+        if highlight then highlight:Destroy() end
+    end
+
+    local function getPlayerGardenEggs(radius)
+        local eggs = {}
+        local char = player.Character or player.CharacterAdded:Wait()
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return eggs end
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if obj:IsA("Model") and petTable[obj.Name] then
+                local basePart = obj:FindFirstChildWhichIsA("BasePart", true)
+                if basePart then
+                    local dist = (basePart.Position - root.Position).Magnitude
+                    if dist <= (radius or 60) then
+                        if not truePetMap[obj] then
+                            local pets = petTable[obj.Name]
+                            local chosen = pets[math.random(1, #pets)]
+                            truePetMap[obj] = chosen
+                        end
+                        table.insert(eggs, obj)
+                    end
+                end
+            end
+        end
+        return eggs
+    end
+
+    local function randomizeNearbyEggs()
+        local eggs = getPlayerGardenEggs(60)
+        for _, egg in ipairs(eggs) do
+            local pets = petTable[egg.Name]
+            local chosen = pets[math.random(1, #pets)]
+            truePetMap[egg] = chosen
+            applyEggESP(egg, chosen)
+        end
+        -- debug
+        --print("Randomized", #eggs, "eggs.")
+    end
+
+    local function flashEffect(button)
+        local originalColor = button.BackgroundColor3
+        for i = 1, 3 do
+            button.BackgroundColor3 = Color3.fromRGB(255,255,255)
+            task.wait(0.05)
+            button.BackgroundColor3 = originalColor
+            task.wait(0.05)
+        end
+    end
+
+    local function countdownAndRandomize(button)
+        for i = 10, 1, -1 do
+            button.Text = "🎲 Randomize in: " .. i
+            task.wait(1)
+        end
+        flashEffect(button)
+        randomizeNearbyEggs()
+        button.Text = "🎲 Randomize Pets"
+    end
+
+    -- Build UI
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "PetRandomizer_UI"
+    gui.Parent = playerGui
+
+    local frame = Instance.new("Frame", gui)
+    frame.Size = UDim2.new(0, 280, 0, 260)
+    frame.Position = UDim2.new(0.05, 0, 0.12, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(105, 80, 60)
+    frame.BorderSizePixel = 0
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+    local title = Instance.new("TextLabel", frame)
+    title.Size = UDim2.new(1, 0, 0, 36)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.FredokaOne
+    title.Text = "🐾 Pet Randomizer ✨"
+    title.TextSize = 20
+    title.TextColor3 = Color3.fromRGB(255,255,255)
+    title.TextXAlignment = Enum.TextXAlignment.Center
+
+    -- Dragging (use same draggable helper)
+    makeDraggable(frame, title)
+
+    -- Buttons
+    local randomizeBtn = Instance.new("TextButton", frame)
+    randomizeBtn.Size = UDim2.new(1, -20, 0, 50)
+    randomizeBtn.Position = UDim2.new(0, 10, 0, 48)
+    randomizeBtn.BackgroundColor3 = Color3.fromRGB(255,140,0)
+    randomizeBtn.Text = "🎲 Randomize Pets"
+    randomizeBtn.TextSize = 20
+    randomizeBtn.Font = Enum.Font.FredokaOne
+    randomizeBtn.TextColor3 = Color3.new(1,1,1)
+
+    local toggleBtn = Instance.new("TextButton", frame)
+    toggleBtn.Size = UDim2.new(1, -20, 0, 44)
+    toggleBtn.Position = UDim2.new(0, 10, 0, 108)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    toggleBtn.Text = "👁️ ESP: ON"
+    toggleBtn.TextSize = 18
+    toggleBtn.Font = Enum.Font.FredokaOne
+    toggleBtn.TextColor3 = Color3.new(1,1,1)
+
+    local autoBtn = Instance.new("TextButton", frame)
+    autoBtn.Size = UDim2.new(1, -20, 0, 34)
+    autoBtn.Position = UDim2.new(0, 10, 0, 164)
+    autoBtn.BackgroundColor3 = Color3.fromRGB(80,150,60)
+    autoBtn.Text = "🔁 Auto Randomize: OFF"
+    autoBtn.TextSize = 16
+    autoBtn.Font = Enum.Font.FredokaOne
+    autoBtn.TextColor3 = Color3.new(1,1,1)
+
+    local credit = Instance.new("TextLabel", frame)
+    credit.Size = UDim2.new(1, 0, 0, 20)
+    credit.Position = UDim2.new(0, 0, 1, -20)
+    credit.BackgroundTransparency = 1
+    credit.Text = "Made by ZuriOnTop"
+    credit.Font = Enum.Font.FredokaOne
+    credit.TextSize = 14
+    credit.TextColor3 = Color3.fromRGB(200,200,200)
+
+    -- Exit button: slide out and cleanup
+    local exit = Instance.new("TextButton", frame)
+    exit.Size = UDim2.new(0, 30, 0, 26)
+    exit.Position = UDim2.new(1, -36, 0, 6)
+    exit.BackgroundColor3 = Color3.fromRGB(180,40,40)
+    exit.Text = "X"
+    exit.Font = Enum.Font.GothamBold
+    exit.TextSize = 16
+    exit.TextColor3 = Color3.fromRGB(255,255,255)
+    Instance.new("UICorner", exit).CornerRadius = UDim.new(0,6)
+
+    -- Apply ESP at start for nearby eggs
+    for _, egg in pairs(getPlayerGardenEggs(60)) do
+        applyEggESP(egg, truePetMap[egg])
+    end
+
+    -- Button behaviors
+    randomizeBtn.MouseButton1Click:Connect(function()
+        -- run countdown on separate thread to avoid blocking UI
+        coroutine.wrap(function()
+            countdownAndRandomize(randomizeBtn)
+        end)()
+    end)
+
+    toggleBtn.MouseButton1Click:Connect(function()
+        espEnabled_local = not espEnabled_local
+        toggleBtn.Text = espEnabled_local and "👁️ ESP: ON" or "👁️ ESP: OFF"
+        for _, egg in pairs(getPlayerGardenEggs(60)) do
+            if espEnabled_local then
+                applyEggESP(egg, truePetMap[egg])
+            else
+                removeEggESP(egg)
+            end
+        end
+    end)
+
+    autoBtn.MouseButton1Click:Connect(function()
+        autoRunning = not autoRunning
+        autoBtn.Text = autoRunning and "🔁 Auto Randomize: ON" or "🔁 Auto Randomize: OFF"
+
+        if autoRunning then
+            autoConn = RunService.Heartbeat:Connect(function(dt)
+                -- run auto random in coroutine to not block
+                autoRunning = autoRunning and autoRunning -- no-op so it remains captured
+            end)
+            -- run loop in coroutine
+            coroutine.wrap(function()
+                while autoRunning do
+                    countdownAndRandomize(randomizeBtn)
+                    -- check for best pets (if want)
+                    for _, petName in pairs(truePetMap) do
+                        -- optional early stop condition if you want
+                        -- e.g. if petName is in bestPets list then stop
+                    end
+                    task.wait(1)
+                end
+                if autoConn then
+                    autoConn:Disconnect()
+                    autoConn = nil
+                end
+            end)()
+        else
+            if autoConn then
+                autoConn:Disconnect()
+                autoConn = nil
+            end
+        end
+    end)
+
+    exit.MouseButton1Click:Connect(function()
+        -- disable the UI then tween out and cleanup ESP
+        randomizeBtn.Active = false
+        toggleBtn.Active = false
+        autoBtn.Active = false
+        exit.Active = false
+        local tween = TweenService:Create(frame, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.new(frame.Position.X.Scale, frame.Position.X.Offset, 1, 80)
+        })
+        tween:Play()
+        tween.Completed:Wait()
+
+        -- cleanup ESP for eggs we labeled
+        for eggObj, _ in pairs(truePetMap) do
+            if eggObj and eggObj.Parent then
+                removeEggESP(eggObj)
+            end
+        end
+        -- stop auto
+        autoRunning = false
+        if autoConn then autoConn:Disconnect() end
+        gui:Destroy()
+    end)
+end
+
+-- Connect main menu buttons
+btnReroll.MouseButton1Click:Connect(openMutationReroll)
+btnRandom.MouseButton1Click:Connect(openPetRandomizer)
+
+-- End of combined script
