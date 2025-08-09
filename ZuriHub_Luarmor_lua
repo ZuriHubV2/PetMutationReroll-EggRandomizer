@@ -1,5 +1,5 @@
 -- Launcher (loads your GitHub scripts; keeps their logic intact)
--- Put this in your executor and run.
+-- Put this in your  executor and run.
 
 -- ===========================
 -- CONFIG
