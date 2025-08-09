@@ -5,7 +5,7 @@
 -- CONFIG
 -- ===========================
 local MUTATION_URL = "https://raw.githubusercontent.com/ZuriHubV2/petmutation.lua/refs/heads/main/lua"
-local EGG_URL      = "https://raw.githubusercontent.com/ZuriHubV2/EggRandomizer/refs/heads/main/ZuriHub_Luarmor_lua"
+local EGG_URL      = "https://raw.githubusercontent.com/ZuriHubV2/EggRandomizer/refs/heads/main/ZuriHubV2_Luarmor_lua"
 
 -- List of possible GUI names the loaded scripts may create (we'll try to remove these before launching)
 local KNOWN_TOOL_GUI_NAMES = {
